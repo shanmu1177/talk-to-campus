@@ -155,5 +155,7 @@ $res = $mysqli->query("SELECT id, query, cnt, created_at FROM unanswered ORDER B
       </div>
     </main>
   </div>
+  <?php include 'footer.php'; ?>
+
 </body>
 </html>

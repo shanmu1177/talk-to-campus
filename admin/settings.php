@@ -144,5 +144,8 @@ textarea{min-height:120px}
     </main>
 
   </div>
+
+  <?php include 'footer.php'; ?>
+
 </body>
 </html>
