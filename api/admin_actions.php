@@ -1,43 +1,101 @@
 <?php
 session_start();
+
 if (!isset($_SESSION['admin_id'])) {
     header("Location: ../admin/login.php");
     exit;
 }
+
 include_once __DIR__ . "/../includes/db.php";
-// ACTION: delete unanswered
+
+
+/* DELETE UNANSWERED */
 if (isset($_GET['delete_unanswered'])) {
+
     $id = intval($_GET['delete_unanswered']);
-    $mysqli->query("DELETE FROM unanswered WHERE id=$id LIMIT 1");
+
+    $stmt = mysqli_prepare($mysqli, 
+        "DELETE FROM unanswered WHERE id = ? LIMIT 1"
+    );
+
+    if ($stmt) {
+        mysqli_stmt_bind_param($stmt, "i", $id);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+    }
+
     header("Location: ../admin/unanswered.php");
     exit;
 }
-// ACTION: convert unanswered → response
+
+
+/* CONVERT UNANSWERED → RESPONSE */
 if (isset($_GET['convert'])) {
+
     $id = intval($_GET['convert']);
-   $res = $mysqli->query("SELECT query FROM unanswered WHERE id=$id LIMIT 1");
-    if ($row = $res->fetch_assoc()) {
-        $query = $row['query'];
 
-        // Create a new response
-        $stmt = $mysqli->prepare("INSERT INTO responses(title,reply,created_at) VALUES(?, ?, NOW())");
-        $title = "Auto response";
-        $defaultReply = "This is an auto-generated reply. Please edit.";
-        $stmt->bind_param("ss", $title, $defaultReply);
-        $stmt->execute();
-        $newId = $stmt->insert_id;
+    $stmt = mysqli_prepare($mysqli, 
+        "SELECT query FROM unanswered WHERE id = ? LIMIT 1"
+    );
 
-        // Add question variant
-        $stmt2 = $mysqli->prepare("INSERT INTO questions(response_id,question) VALUES(?,?)");
-        $stmt2->bind_param("is", $newId, $query);
-        $stmt2->execute();
+    if ($stmt) {
 
-        // Remove unanswered
-        $mysqli->query("DELETE FROM unanswered WHERE id=$id LIMIT 1");
+        mysqli_stmt_bind_param($stmt, "i", $id);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_bind_result($stmt, $query);
 
-        header("Location: ../admin/manage_response.php?id=" . $newId);
-        exit;
+        if (mysqli_stmt_fetch($stmt)) {
+
+            mysqli_stmt_close($stmt);
+
+            /* Create new response */
+            $title = "Auto response";
+            $defaultReply = "This is an auto-generated reply. Please edit.";
+
+            $stmt2 = mysqli_prepare($mysqli,
+                "INSERT INTO responses (title, reply, created_at) VALUES (?, ?, NOW())"
+            );
+
+            if ($stmt2) {
+                mysqli_stmt_bind_param($stmt2, "ss", $title, $defaultReply);
+                mysqli_stmt_execute($stmt2);
+
+                $newId = mysqli_insert_id($mysqli);
+
+                mysqli_stmt_close($stmt2);
+
+                /* Insert into questions */
+                $stmt3 = mysqli_prepare($mysqli,
+                    "INSERT INTO questions (response_id, question) VALUES (?, ?)"
+                );
+
+                if ($stmt3) {
+                    mysqli_stmt_bind_param($stmt3, "is", $newId, $query);
+                    mysqli_stmt_execute($stmt3);
+                    mysqli_stmt_close($stmt3);
+                }
+
+                /* Delete from unanswered */
+                $stmt4 = mysqli_prepare($mysqli,
+                    "DELETE FROM unanswered WHERE id = ? LIMIT 1"
+                );
+
+                if ($stmt4) {
+                    mysqli_stmt_bind_param($stmt4, "i", $id);
+                    mysqli_stmt_execute($stmt4);
+                    mysqli_stmt_close($stmt4);
+                }
+
+                header("Location: ../admin/manage_response.php?id=" . $newId);
+                exit;
+            }
+
+        } else {
+            mysqli_stmt_close($stmt);
+        }
     }
 }
+
 header("Location: ../admin/dashboard.php");
 exit;
+?>

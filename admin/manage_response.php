@@ -1,65 +1,119 @@
 <?php
-// admin/manage_response.php - create/edit a response and question variants
 session_start();
 
 include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
 include_once __DIR__ . '/../includes/auth.php';
-include_once __DIR__ . '/../includes/functions.php';
 
 require_admin();
 
-if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
-if (file_exists(__DIR__ . '/../includes/db.php')) include_once __DIR__ . '/../includes/db.php'; 
-else die("Missing includes/db.php");
-
-$id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
+$id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 $mode = $id ? 'edit' : 'add';
-$title = $reply = '';
+
+$title = '';
+$reply = '';
 $variants = array();
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+/* SAVE FORM */
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+
     $title = trim($_POST['title']);
     $reply = trim($_POST['reply']);
-    $variants_raw = trim($_POST['variants']); // newline separated
-    if ($mode === 'edit') {
-        $stmt = $mysqli->prepare("UPDATE responses SET title = ?, reply = ? WHERE id = ? LIMIT 1");
-        $stmt->bind_param('ssi', $title, $reply, $id);
-        $stmt->execute(); $stmt->close();
+    $variants_raw = trim($_POST['variants']);
+
+    if ($mode == 'edit') {
+
+        $stmt = mysqli_prepare($mysqli,
+            "UPDATE responses SET title = ?, reply = ? WHERE id = ? LIMIT 1"
+        );
+
+        mysqli_stmt_bind_param($stmt, "ssi", $title, $reply, $id);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+
     } else {
-        $stmt = $mysqli->prepare("INSERT INTO responses (title, reply, created_at) VALUES (?, ?, NOW())");
-        $stmt->bind_param('ss', $title, $reply);
-        $stmt->execute();
-        $id = $stmt->insert_id;
-        $stmt->close();
+
+        $stmt = mysqli_prepare($mysqli,
+            "INSERT INTO responses (title, reply, created_at)
+             VALUES (?, ?, NOW())"
+        );
+
+        mysqli_stmt_bind_param($stmt, "ss", $title, $reply);
+        mysqli_stmt_execute($stmt);
+
+        $id = mysqli_insert_id($mysqli);
+
+        mysqli_stmt_close($stmt);
         $mode = 'edit';
     }
-    // save variants: remove existing and insert new ones
-    $mysqli->query("DELETE FROM questions WHERE response_id = ".intval($id));
-    if ($variants_raw !== '') {
+
+    /* DELETE OLD VARIANTS */
+    $del = mysqli_prepare($mysqli,
+        "DELETE FROM questions WHERE response_id = ?"
+    );
+    mysqli_stmt_bind_param($del, "i", $id);
+    mysqli_stmt_execute($del);
+    mysqli_stmt_close($del);
+
+    /* INSERT NEW VARIANTS */
+    if ($variants_raw != '') {
+
         $lines = preg_split("/\r\n|\n|\r/", $variants_raw);
-        $stmt = $mysqli->prepare("INSERT INTO questions (response_id, question) VALUES (?, ?)");
+
+        $stmt = mysqli_prepare($mysqli,
+            "INSERT INTO questions (response_id, question)
+             VALUES (?, ?)"
+        );
+
         foreach ($lines as $ln) {
+
             $q = trim($ln);
-            if ($q === '') continue;
-            $stmt->bind_param('is', $id, $q);
-            $stmt->execute();
+            if ($q == '') continue;
+
+            mysqli_stmt_bind_param($stmt, "is", $id, $q);
+            mysqli_stmt_execute($stmt);
         }
-        $stmt->close();
+
+        mysqli_stmt_close($stmt);
     }
-    header('Location: responses.php'); exit;
+
+    header("Location: responses.php");
+    exit;
 }
 
-// load existing
-if ($id) {
-    $r = $mysqli->query("SELECT * FROM responses WHERE id = ".intval($id));
-    if ($row = $r->fetch_assoc()) {
-        $title = $row['title']; $reply = $row['reply'];
-        $qr = $mysqli->query("SELECT question FROM questions WHERE response_id = ".intval($id));
-        while ($qrow = $qr->fetch_assoc()) $variants[] = $qrow['question'];
-    } else {
+
+/* LOAD EXISTING DATA */
+if ($id > 0) {
+
+    $stmt = mysqli_prepare($mysqli,
+        "SELECT title, reply FROM responses WHERE id = ? LIMIT 1"
+    );
+
+    mysqli_stmt_bind_param($stmt, "i", $id);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_bind_result($stmt, $title, $reply);
+
+    if (!mysqli_stmt_fetch($stmt)) {
+        mysqli_stmt_close($stmt);
         die("Response not found.");
     }
+
+    mysqli_stmt_close($stmt);
+
+    /* Load variants */
+    $stmt2 = mysqli_prepare($mysqli,
+        "SELECT question FROM questions WHERE response_id = ?"
+    );
+
+    mysqli_stmt_bind_param($stmt2, "i", $id);
+    mysqli_stmt_execute($stmt2);
+    mysqli_stmt_bind_result($stmt2, $question_val);
+
+    while (mysqli_stmt_fetch($stmt2)) {
+        $variants[] = $question_val;
+    }
+
+    mysqli_stmt_close($stmt2);
 }
 ?>
 <!doctype html>

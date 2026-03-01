@@ -1,48 +1,107 @@
 <?php
-// admin/unanswered.php - list unanswered queries and allow handling
 session_start();
 
 include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
 include_once __DIR__ . '/../includes/auth.php';
-include_once __DIR__ . '/../includes/functions.php';
 
 require_admin();
-if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
-if (file_exists(__DIR__ . '/../includes/db.php')) include_once __DIR__ . '/../includes/db.php'; else die("Missing includes/db.php");
 
-// If admin chooses to convert an unanswered to a response quickly
-if (isset($_GET['handle'])) {
-    $id = (int) $_GET['handle'];
-    $res = $mysqli->query("SELECT * FROM unanswered WHERE id = $id LIMIT 1");
-    if ($row = $res->fetch_assoc()) {
-        $prepTitle = "Response for: ".substr($row['query'],0,40);
-        $stmt = $mysqli->prepare("INSERT INTO responses (title, reply, created_at) VALUES (?, ?, NOW())");
-        $genericReply = "Answer for: ". $row['query'];
-        $stmt->bind_param('ss', $prepTitle, $genericReply);
-        $stmt->execute();
-        $newId = $stmt->insert_id;
-        $stmt->close();
-        $stm2 = $mysqli->prepare("INSERT INTO questions (response_id, question) VALUES (?, ?)");
-        $stm2->bind_param('is', $newId, $row['query']);
-        $stm2->execute();
-        $stm2->close();
-        $mysqli->query("DELETE FROM unanswered WHERE id = $id LIMIT 1");
-        header("Location: manage_response.php?id={$newId}");
+/* HANDLE CONVERT TO RESPONSE */
+if (isset($_GET['handle']) && is_numeric($_GET['handle'])) {
+
+    $id = intval($_GET['handle']);
+
+    $stmt = mysqli_prepare($mysqli,
+        "SELECT id, query FROM unanswered WHERE id = ? LIMIT 1"
+    );
+
+    mysqli_stmt_bind_param($stmt, "i", $id);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_bind_result($stmt, $uid, $query_text);
+
+    if (mysqli_stmt_fetch($stmt)) {
+
+        mysqli_stmt_close($stmt);
+
+        $prepTitle = "Response for: " . substr($query_text, 0, 40);
+        $genericReply = "Answer for: " . $query_text;
+
+        /* Insert into responses */
+        $stmt2 = mysqli_prepare($mysqli,
+            "INSERT INTO responses (title, reply, created_at)
+             VALUES (?, ?, NOW())"
+        );
+
+        mysqli_stmt_bind_param($stmt2, "ss", $prepTitle, $genericReply);
+        mysqli_stmt_execute($stmt2);
+
+        $newId = mysqli_insert_id($mysqli);
+
+        mysqli_stmt_close($stmt2);
+
+        /* Insert question variant */
+        $stmt3 = mysqli_prepare($mysqli,
+            "INSERT INTO questions (response_id, question)
+             VALUES (?, ?)"
+        );
+
+        mysqli_stmt_bind_param($stmt3, "is", $newId, $query_text);
+        mysqli_stmt_execute($stmt3);
+        mysqli_stmt_close($stmt3);
+
+        /* Delete unanswered */
+        $stmt4 = mysqli_prepare($mysqli,
+            "DELETE FROM unanswered WHERE id = ? LIMIT 1"
+        );
+
+        mysqli_stmt_bind_param($stmt4, "i", $id);
+        mysqli_stmt_execute($stmt4);
+        mysqli_stmt_close($stmt4);
+
+        header("Location: manage_response.php?id=" . $newId);
         exit;
+
     } else {
-        header('Location: unanswered.php'); exit;
+        mysqli_stmt_close($stmt);
+        header("Location: unanswered.php");
+        exit;
     }
 }
 
-// handle delete of unanswered
-if (isset($_GET['delete'])) {
-    $id = (int) $_GET['delete'];
-    $mysqli->query("DELETE FROM unanswered WHERE id = $id LIMIT 1");
-    header('Location: unanswered.php'); exit;
+
+/* HANDLE DELETE */
+if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+
+    $id = intval($_GET['delete']);
+
+    $stmt = mysqli_prepare($mysqli,
+        "DELETE FROM unanswered WHERE id = ? LIMIT 1"
+    );
+
+    mysqli_stmt_bind_param($stmt, "i", $id);
+    mysqli_stmt_execute($stmt);
+    mysqli_stmt_close($stmt);
+
+    header("Location: unanswered.php");
+    exit;
 }
 
-$res = $mysqli->query("SELECT id, query, cnt, created_at FROM unanswered ORDER BY cnt DESC, created_at DESC");
+
+/* FETCH UNANSWERED LIST */
+$unanswered = array();
+
+$result = mysqli_query($mysqli,
+    "SELECT id, query, cnt, created_at
+     FROM unanswered
+     ORDER BY cnt DESC, created_at DESC"
+);
+
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $unanswered[] = $row;
+    }
+}
 ?>
 <!doctype html>
 <html>
@@ -136,9 +195,13 @@ $res = $mysqli->query("SELECT id, query, cnt, created_at FROM unanswered ORDER B
             <tr><th>Query</th><th style="width:100px">Count</th><th style="width:180px">When</th><th style="width:200px">Actions</th></tr>
           </thead>
           <tbody>
-            <?php if (!$res || $res->num_rows === 0): ?>
-              <tr><td colspan="4" style="padding:18px;text-align:center;color:var(--muted)">No unanswered queries</td></tr>
-            <?php else: while ($row = $res->fetch_assoc()): ?>
+            <?php if (empty($unanswered)): ?>
+            <tr>
+                  <td colspan="4" style="padding:18px;text-align:center;color:var(--muted)">
+                  No unanswered queries
+                </td>
+                </tr>
+            <?php else: foreach ($unanswered as $row): ?>
               <tr>
                 <td><?php echo htmlspecialchars($row['query']); ?></td>
                 <td><?php echo intval($row['cnt']); ?></td>
@@ -148,8 +211,7 @@ $res = $mysqli->query("SELECT id, query, cnt, created_at FROM unanswered ORDER B
                   <a class="link-delete" href="unanswered.php?delete=<?php echo $row['id']; ?>" onclick="return confirm('Remove?')">Delete</a>
                 </td>
               </tr>
-            <?php endwhile; endif; ?>
-          </tbody>
+              <?php endforeach; endif; ?>          </tbody>
         </table>
 
       </div>

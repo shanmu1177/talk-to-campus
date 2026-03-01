@@ -1,24 +1,39 @@
 <?php
-// chat.php - user-facing chat UI
-// PHP 5.6 compatible
 session_start();
 
-// Try to load system info (if includes/db.php exists). If not, use defaults.
-$intro_text = "Hello! I'm Talk To Campus Bot. How can I assist you today?";
-$no_result_text = "I couldn't find an answer for that. I'll ask an admin to check and get back to you.";
+$intro_text = "Hello! I am Talk To Campus Bot. How can I assist you today?";
+$no_result_text = "I could not find an answer for that. I will ask admin to check.";
 $site_title = "Talk To Campus";
 
-if (@file_exists(__DIR__ . '/includes/db.php')) {
-    @include_once __DIR__ . '/includes/db.php'; // should define $mysqli (mysqli object)
-    if (isset($mysqli) && $mysqli) {
-        $res = $mysqli->query("SELECT * FROM system_info LIMIT 1");
-        if ($res) {
-            $row = $res->fetch_assoc();
-            if ($row) {
-                if (!empty($row['intro_msg'])) $intro_text = $row['intro_msg'];
-                if (!empty($row['no_result_msg'])) $no_result_text = $row['no_result_msg'];
-                if (!empty($row['site_title'])) $site_title = $row['site_title'];
-            }
+$base = __DIR__ . '/includes';
+
+if (file_exists($base . '/config.php')) {
+    include_once $base . '/config.php';
+}
+
+if (file_exists($base . '/db.php')) {
+    include_once $base . '/db.php';
+}
+
+if (isset($mysqli)) {
+
+    $sql = "SELECT site_title, intro_msg, no_result_msg FROM system_info LIMIT 1";
+    $result = mysqli_query($mysqli, $sql);
+
+    if ($result && mysqli_num_rows($result) > 0) {
+
+        $row = mysqli_fetch_assoc($result);
+
+        if (!empty($row['intro_msg'])) {
+            $intro_text = $row['intro_msg'];
+        }
+
+        if (!empty($row['no_result_msg'])) {
+            $no_result_text = $row['no_result_msg'];
+        }
+
+        if (!empty($row['site_title'])) {
+            $site_title = $row['site_title'];
         }
     }
 }
@@ -124,66 +139,86 @@ if (@file_exists(__DIR__ . '/includes/db.php')) {
 
 <script>
 (function(){
+
   var messagesEl = document.getElementById('messages');
   var input = document.getElementById('msgInput');
   var sendBtn = document.getElementById('sendBtn');
 
-  // quick action definitions (these are the category keys your backend will accept)
+  if (!messagesEl || !input || !sendBtn) return;
+
   var quickActions = {
-    campus: {
-      label: "Campus Info",
-      payload: "campus_info" // backend will interpret
-    },
-    academics: { label: "Academics", payload: "academics" },
-    events: { label: "Events", payload: "events" },
-    faqs: { label: "FAQs", payload: "faqs" }
+    campus: "campus_info",
+    academics: "academics",
+    events: "events",
+    faqs: "faqs"
   };
 
-  // handle quick buttons
+  /* QUICK BUTTONS */
   var qbuttons = document.querySelectorAll('.quick button');
-  for(var i=0;i<qbuttons.length;i++){
-    qbuttons[i].addEventListener('click', function(e){
+  for (var i = 0; i < qbuttons.length; i++) {
+    qbuttons[i].onclick = function() {
       var key = this.getAttribute('data-action');
       if (quickActions[key]) {
-        sendMessage( quickActions[key].payload, true );
+        sendMessage(quickActions[key], true);
       }
-    });
+    };
   }
 
-  // send on click or Enter
-  sendBtn.addEventListener('click', function(){ sendMessage(input.value || '', false); });
-  input.addEventListener('keydown', function(e){ if(e.keyCode===13){ sendMessage(input.value || '', false); } });
+  /* SEND BUTTON */
+  sendBtn.onclick = function() {
+    sendMessage(input.value, false);
+  };
+
+  /* ENTER KEY */
+  input.onkeydown = function(e) {
+    if (e.keyCode == 13) {
+      sendMessage(input.value, false);
+    }
+  };
 
   function appendMessage(text, who) {
+
     var wrapper = document.createElement('div');
-    wrapper.className = 'msg ' + (who === 'user' ? 'user' : 'bot');
+    wrapper.className = 'msg ' + (who == 'user' ? 'user' : 'bot');
+
     var inner = document.createElement('div');
     var bubble = document.createElement('div');
-    bubble.className = 'bubble ' + (who === 'user' ? 'user' : 'bot');
+
+    bubble.className = 'bubble ' + (who == 'user' ? 'user' : 'bot');
     bubble.innerHTML = text;
+
     inner.appendChild(bubble);
+
     var time = document.createElement('div');
     time.className = 'time';
+
     var now = new Date();
-    time.textContent = now.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+    time.innerHTML = now.getHours() + ":" + 
+                     ("0" + now.getMinutes()).slice(-2);
+
     inner.appendChild(time);
     wrapper.appendChild(inner);
     messagesEl.appendChild(wrapper);
+
     messagesEl.scrollTop = messagesEl.scrollHeight;
   }
 
-  // sendMessage: content = string or payload; isQuick indicates to show user bubble with category label
   function sendMessage(content, isQuick) {
-    var userText = isQuick ? content : (content || '').trim();
+
+    if (!content) return;
+
+    var userText = isQuick ? content : content.replace(/^\s+|\s+$/g, '');
     if (!userText) return;
-    // show user bubble (for quick actions show friendly label)
-    var displayText = isQuick ? ('🔘 ' + content.replace(/_/g,' ')) : escapeHtml(userText);
+
+    var displayText = isQuick ? 
+        ('🔘 ' + content.replace(/_/g,' ')) : 
+        escapeHtml(userText);
+
     appendMessage(displayText, 'user');
 
-    // Clear input if not quick action
-    if(!isQuick) input.value = '';
+    if (!isQuick) input.value = '';
 
-    // show small typing indicator from bot
+    /* Typing indicator */
     var typing = document.createElement('div');
     typing.className = 'msg bot';
     typing.id = 'typing';
@@ -191,40 +226,51 @@ if (@file_exists(__DIR__ . '/includes/db.php')) {
     messagesEl.appendChild(typing);
     messagesEl.scrollTop = messagesEl.scrollHeight;
 
-    // send AJAX to backend endpoint
     var xhr = new XMLHttpRequest();
-    xhr.open('POST', 'api/send_message.php', true);
+
+    /* IMPORTANT: safer relative path */
+    xhr.open('POST', './api/send_message.php', true);
     xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded');
-    xhr.onreadystatechange = function(){
-      if(xhr.readyState !== 4) return;
-      // remove typing
+
+    xhr.onreadystatechange = function() {
+
+      if (xhr.readyState != 4) return;
+
       var t = document.getElementById('typing');
       if (t) t.parentNode.removeChild(t);
-      if(xhr.status === 200){
+
+      if (xhr.status == 200) {
+
         try {
           var res = JSON.parse(xhr.responseText);
-          // expected format: { success: true, reply: "<html string>" }
-          if(res && res.reply){
+
+          if (res && res.reply) {
             appendMessage(res.reply, 'bot');
           } else {
             appendMessage("Sorry, something went wrong.", 'bot');
           }
-        } catch(e) {
+
+        } catch (e) {
           appendMessage("Invalid server response.", 'bot');
         }
+
       } else {
         appendMessage("Server error. Try again later.", 'bot');
       }
     };
 
-    // payload: q=... & is_quick=1 if quick action
-    var params = 'q=' + encodeURIComponent(userText) + '&is_quick=' + (isQuick?1:0);
+    var params = "q=" + encodeURIComponent(userText) +
+                 "&is_quick=" + (isQuick ? 1 : 0);
+
     xhr.send(params);
   }
 
   function escapeHtml(text) {
-    if(!text) return '';
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
+    if (!text) return '';
+    return text.replace(/&/g, "&amp;")
+               .replace(/</g, "&lt;")
+               .replace(/>/g, "&gt;")
+               .replace(/\n/g, "<br>");
   }
 
 })();

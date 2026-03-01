@@ -1,38 +1,48 @@
 <?php
-// admin/responses.php
 session_start();
 
 include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
 include_once __DIR__ . '/../includes/auth.php';
-include_once __DIR__ . '/../includes/functions.php';
 
 require_admin();
-if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
 
-// handle delete (GET) - simple flow as before
+/* DELETE RESPONSE */
 if (isset($_GET['delete']) && is_numeric($_GET['delete'])) {
+
     $delid = intval($_GET['delete']);
-    $stmt = $mysqli->prepare("DELETE FROM responses WHERE id = ? LIMIT 1");
+
+    $stmt = mysqli_prepare($mysqli,
+        "DELETE FROM responses WHERE id = ? LIMIT 1"
+    );
+
     if ($stmt) {
-        $stmt->bind_param('i', $delid);
-        $stmt->execute();
-        $stmt->close();
-        header('Location: responses.php');
-        exit;
+        mysqli_stmt_bind_param($stmt, "i", $delid);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
     }
+
+    header("Location: responses.php");
+    exit;
 }
 
-// fetch responses with variant counts
+
+/* FETCH RESPONSES WITH VARIANT COUNT */
 $responses = array();
-$q = "SELECT r.id, r.title, r.reply, COUNT(q.id) AS variants
-      FROM responses r
-      LEFT JOIN questions q ON q.response_id = r.id
-      GROUP BY r.id
-      ORDER BY r.id DESC";
-$r = $mysqli->query($q);
-if ($r) {
-    while ($row = $r->fetch_assoc()) $responses[] = $row;
+
+$sql = "SELECT r.id, r.title, r.reply,
+        COUNT(q.id) AS variants
+        FROM responses r
+        LEFT JOIN questions q ON q.response_id = r.id
+        GROUP BY r.id
+        ORDER BY r.id DESC";
+
+$result = mysqli_query($mysqli, $sql);
+
+if ($result) {
+    while ($row = mysqli_fetch_assoc($result)) {
+        $responses[] = $row;
+    }
 }
 ?>
 <!doctype html>

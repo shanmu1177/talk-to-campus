@@ -1,152 +1,188 @@
 <?php
 // includes/functions.php
-// Core rule-based chatbot logic and helpers for PHP 5.6
+// Fully compatible with PHP 5.6 (No get_result, No mbstring dependency)
 
-// Make sure db is available
+// Ensure DB connection exists
 if (!isset($mysqli)) {
-    // try to include db automatically if not present
     if (file_exists(__DIR__ . '/db.php')) {
         include_once __DIR__ . '/db.php';
     } else {
-        trigger_error("Missing mysqli connection. Include includes/db.php before includes/functions.php", E_USER_WARNING);
+        trigger_error("Missing mysqli connection.", E_USER_WARNING);
     }
 }
 
 /**
- * get_system_info
- * returns associative array with keys: site_title, intro_msg, no_result_msg
+ * Get system info
  */
 function get_system_info() {
     global $mysqli;
+
     $default = array(
         'site_title' => defined('SITE_TITLE') ? SITE_TITLE : 'Talk To Campus',
-        'intro_msg' => "Hello! I'm Talk To Campus Bot. How can I assist you today?",
-        'no_result_msg' => "I couldn't find an answer for that. We'll ask admin to check."
+        'intro_msg' => "Hello! I am Talk To Campus Bot. How can I assist you today?",
+        'no_result_msg' => "I could not find an answer for that. Admin will check."
     );
 
     if (!isset($mysqli)) return $default;
 
-    $res = $mysqli->query("SELECT site_title, intro_msg, no_result_msg FROM system_info LIMIT 1");
-    if ($res && ($row = $res->fetch_assoc())) {
+    $sql = "SELECT site_title, intro_msg, no_result_msg FROM system_info LIMIT 1";
+    $result = mysqli_query($mysqli, $sql);
+
+    if ($result && mysqli_num_rows($result) > 0) {
+        $row = mysqli_fetch_assoc($result);
         return array_merge($default, $row);
     }
+
     return $default;
 }
 
 /**
- * find_response_for_query
- * Input: $query string, $quick string|null (e.g. 'campus_info', 'academics', 'events', 'faqs')
- * Returns: reply string (HTML). If none found, inserts to 'unanswered' and returns no_result_msg.
+ * Find response for query
  */
 function find_response_for_query($query, $quick = null) {
     global $mysqli;
 
     $query_trim = trim($query);
-    $query_low = mb_strtolower($query_trim, 'UTF-8');
+    $query_low  = strtolower($query_trim);
 
-    // 1) If quick action provided, map to some known keywords or look up response by title
+    // 1) Quick buttons
     if ($quick) {
-        // map quick keys to response title keywords (adjust to your DB entries)
         $map = array(
             'campus_info' => 'Campus Info',
             'academics'   => 'Academics',
             'events'      => 'Events',
             'faqs'        => 'FAQs'
         );
+
         if (isset($map[$quick])) {
             $title_like = '%' . $map[$quick] . '%';
-            $stmt = $mysqli->prepare("SELECT reply FROM responses WHERE title LIKE ? LIMIT 1");
+
+            $stmt = mysqli_prepare($mysqli,
+                "SELECT reply FROM responses WHERE title LIKE ? LIMIT 1"
+            );
+
             if ($stmt) {
-                $stmt->bind_param('s', $title_like);
-                $stmt->execute();
-                $r = $stmt->get_result();
-                if ($row = $r->fetch_assoc()) {
-                    $stmt->close();
-                    return $row['reply'];
+                mysqli_stmt_bind_param($stmt, "s", $title_like);
+                mysqli_stmt_execute($stmt);
+                mysqli_stmt_bind_result($stmt, $reply);
+
+                if (mysqli_stmt_fetch($stmt)) {
+                    mysqli_stmt_close($stmt);
+                    return $reply;
                 }
-                $stmt->close();
+
+                mysqli_stmt_close($stmt);
             }
         }
     }
 
-    // 2) Exact match (questions table)
-    $stmt = $mysqli->prepare("SELECT r.reply
-                              FROM questions q
-                              JOIN responses r ON r.id = q.response_id
-                              WHERE LOWER(q.question) = ? LIMIT 1");
+    // 2) Exact match
+    $stmt = mysqli_prepare($mysqli,
+        "SELECT r.reply
+         FROM questions q
+         JOIN responses r ON r.id = q.response_id
+         WHERE LOWER(q.question) = ? LIMIT 1"
+    );
+
     if ($stmt) {
-        $stmt->bind_param('s', $query_low);
-        $stmt->execute();
-        $res = $stmt->get_result();
-        if ($res && ($row = $res->fetch_assoc())) {
-            $stmt->close();
-            return $row['reply'];
+        mysqli_stmt_bind_param($stmt, "s", $query_low);
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_bind_result($stmt, $reply_exact);
+
+        if (mysqli_stmt_fetch($stmt)) {
+            mysqli_stmt_close($stmt);
+            return $reply_exact;
         }
-        $stmt->close();
+
+        mysqli_stmt_close($stmt);
     }
 
-    // 3) Keyword search (split by spaces, search questions LIKE)
+    // 3) Keyword search
     $words = preg_split('/\s+/', $query_low);
+
     foreach ($words as $w) {
         $w = trim($w);
-        if ($w === '' || strlen($w) < 2) continue; // skip tiny words
+        if ($w == '' || strlen($w) < 2) continue;
+
         $like = '%' . $w . '%';
-        $stmt = $mysqli->prepare("SELECT r.reply
-                                  FROM questions q
-                                  JOIN responses r ON r.id = q.response_id
-                                  WHERE q.question LIKE ? LIMIT 1");
+
+        $stmt = mysqli_prepare($mysqli,
+            "SELECT r.reply
+             FROM questions q
+             JOIN responses r ON r.id = q.response_id
+             WHERE q.question LIKE ? LIMIT 1"
+        );
+
         if ($stmt) {
-            $stmt->bind_param('s', $like);
-            $stmt->execute();
-            $res2 = $stmt->get_result();
-            if ($res2 && ($row2 = $res2->fetch_assoc())) {
-                $stmt->close();
-                return $row2['reply'];
+            mysqli_stmt_bind_param($stmt, "s", $like);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_bind_result($stmt, $reply_like);
+
+            if (mysqli_stmt_fetch($stmt)) {
+                mysqli_stmt_close($stmt);
+                return $reply_like;
             }
-            $stmt->close();
+
+            mysqli_stmt_close($stmt);
         }
     }
 
-    // 4) No match — insert or increment unanswered table
+    // 4) Insert / Update unanswered
     if (isset($mysqli)) {
-        // try to find existing
-        $stmt = $mysqli->prepare("SELECT id, cnt FROM unanswered WHERE query = ? LIMIT 1");
+
+        $stmt = mysqli_prepare($mysqli,
+            "SELECT id, cnt FROM unanswered WHERE query = ? LIMIT 1"
+        );
+
         if ($stmt) {
-            $stmt->bind_param('s', $query_trim);
-            $stmt->execute();
-            $res3 = $stmt->get_result();
-            if ($u = $res3->fetch_assoc()) {
-                $stmt->close();
-                $newcnt = (int)$u['cnt'] + 1;
-                $upd = $mysqli->prepare("UPDATE unanswered SET cnt = ? WHERE id = ?");
+            mysqli_stmt_bind_param($stmt, "s", $query_trim);
+            mysqli_stmt_execute($stmt);
+            mysqli_stmt_bind_result($stmt, $uid, $ucnt);
+
+            if (mysqli_stmt_fetch($stmt)) {
+
+                mysqli_stmt_close($stmt);
+
+                $newcnt = $ucnt + 1;
+
+                $upd = mysqli_prepare($mysqli,
+                    "UPDATE unanswered SET cnt = ? WHERE id = ?"
+                );
+
                 if ($upd) {
-                    $upd->bind_param('ii', $newcnt, $u['id']);
-                    $upd->execute();
-                    $upd->close();
+                    mysqli_stmt_bind_param($upd, "ii", $newcnt, $uid);
+                    mysqli_stmt_execute($upd);
+                    mysqli_stmt_close($upd);
                 }
+
             } else {
-                $stmt->close();
-                $ins = $mysqli->prepare("INSERT INTO unanswered (query, cnt, created_at) VALUES (?, 1, NOW())");
+
+                mysqli_stmt_close($stmt);
+
+                $ins = mysqli_prepare($mysqli,
+                    "INSERT INTO unanswered (query, cnt, created_at)
+                     VALUES (?, 1, NOW())"
+                );
+
                 if ($ins) {
-                    $ins->bind_param('s', $query_trim);
-                    $ins->execute();
-                    $ins->close();
+                    mysqli_stmt_bind_param($ins, "s", $query_trim);
+                    mysqli_stmt_execute($ins);
+                    mysqli_stmt_close($ins);
                 }
             }
         }
     }
 
-    // Return system no-result message
     $sys = get_system_info();
-    return isset($sys['no_result_msg']) ? $sys['no_result_msg'] : "I don't know this yet. Admin will check.";
+    return isset($sys['no_result_msg'])
+        ? $sys['no_result_msg']
+        : "I do not know this yet.";
 }
 
 /**
- * sanitize_output
- * Minimal helper to safely output reply text (if you expect HTML allowed, skip htmlentities)
- * Here we assume replies may include safe HTML (admin enters), so we return raw.
- * Use this if you want to escape: return htmlspecialchars($s, ENT_QUOTES, 'UTF-8');
+ * Output sanitizer
  */
 function sanitize_output($s) {
     return $s;
 }
+?>

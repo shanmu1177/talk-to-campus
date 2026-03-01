@@ -1,36 +1,46 @@
 <?php
 session_start();
-
-include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
+
 $error = '';
 $success = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+
     $username = trim($_POST['username']);
     $email    = trim($_POST['email']);
     $password = trim($_POST['password']);
-    if ($username === '' || $email === '' || $password === '') {
-        $error = "All fields are required.";
-    } else {
-        // check duplicate user
-        $chk = $mysqli->prepare("SELECT id FROM users WHERE username=? OR email=? LIMIT 1");
-        $chk->bind_param('ss', $username, $email);
-        $chk->execute();
-        $res = $chk->get_result();
-        if ($res->num_rows > 0) {
-            $error = "User already exists.";
-        } else {
-            $pass_md5 = md5($password);   // same as login
-            $stmt = $mysqli->prepare(
-                "INSERT INTO users (username,email,password,created_at) VALUES (?,?,?,NOW())"
-            );
-            $stmt->bind_param('sss', $username, $email, $pass_md5);
-            $stmt->execute();
-            $stmt->close();
 
-            $success = "Account created! You can now login.";
+    if ($username == '' || $email == '' || $password == '') {
+
+        $error = "All fields are required.";
+
+    } else {
+
+        $sql = "SELECT id FROM users WHERE username='$username' OR email='$email' LIMIT 1";
+        $check = mysqli_query($mysqli, $sql);
+
+        if ($check && mysqli_num_rows($check) > 0) {
+
+            $error = "User already exists.";
+
+        } else {
+
+            $insert = "INSERT INTO users (username,email,password,created_at)
+                       VALUES ('$username','$email','$password',NOW())";
+
+            if (mysqli_query($mysqli, $insert)) {
+
+                echo "<script>
+                alert('Account Created Successfully!');
+                window.location='login.php';
+                </script>";
+                exit;
+
+            } else {
+                $error = "Database error.";
+            }
         }
-        $chk->close();
     }
 }
 ?>

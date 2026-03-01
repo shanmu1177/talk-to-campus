@@ -1,51 +1,51 @@
 <?php
-// admin/login.php
 session_start();
 
-include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
-include_once __DIR__ . '/../includes/auth.php';
 
 $error = '';
 
 if (isset($_SESSION['admin_id'])) {
-    header('Location: dashboard.php'); exit;
+    header("Location: dashboard.php");
+    exit;
 }
 
-// Ensure DB connection (redundant include safe)
-if (!file_exists(__DIR__ . '/../includes/db.php')) {
-    die("Missing includes/db.php - create it with mysqli connection.");
-}
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $username = isset($_POST['username']) ? trim($_POST['username']) : '';
-    $password = isset($_POST['password']) ? trim($_POST['password']) : '';
+    $username = trim($_POST['username']);
+    $password = trim($_POST['password']);
 
-    if ($username === '' || $password === '') {
+    if ($username == '' || $password == '') {
+
         $error = "Enter username and password.";
+
     } else {
-        // NOTE: legacy MD5 from your SQL. If you change DB hashing update this.
-        $pass_md5 = md5($password);
-        $stmt = $mysqli->prepare("SELECT id, username FROM users WHERE username = ? AND password = ? LIMIT 1");
-        if ($stmt) {
-            $stmt->bind_param('ss', $username, $pass_md5);
-            $stmt->execute();
-            $res = $stmt->get_result();
-            if ($row = $res->fetch_assoc()) {
-                $_SESSION['admin_id'] = $row['id'];
-                $_SESSION['admin_user'] = $row['username'];
-                $stmt->close();
-               echo "<script>
-        alert('Login Successfully!!');
-        window.location.href = 'dashboard.php';
-      </script>";
- exit;
-            } else {
-                $error = "Invalid username or password.";
-            }
-            $stmt->close();
+
+        $sql = "SELECT * FROM users 
+                WHERE username = '$username' 
+                AND password = '$password' 
+                LIMIT 1";
+
+        $result = mysqli_query($mysqli, $sql);
+
+        if ($result && mysqli_num_rows($result) == 1) {
+
+            $row = mysqli_fetch_assoc($result);
+
+            $_SESSION['admin_id'] = $row['id'];
+            $_SESSION['admin_user'] = $row['username'];
+          
+
+            echo "<script>
+            alert('Login Successfully!');
+            window.location='dashboard.php';
+            </script>";
+            exit;
+
         } else {
-            $error = "Database error. Please check connection.";
+
+            $error = "Invalid username or password.";
+
         }
     }
 }

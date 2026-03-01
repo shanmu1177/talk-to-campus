@@ -1,5 +1,4 @@
 <?php
-// admin/dashboard.php
 session_start();
 
 include_once __DIR__ . '/../includes/config.php';
@@ -7,24 +6,57 @@ include_once __DIR__ . '/../includes/db.php';
 include_once __DIR__ . '/../includes/auth.php';
 
 require_admin();
-if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
 
-// fetch some stats
-$stats = array('responses'=>0, 'questions'=>0, 'unanswered'=>0, 'users'=>0);
-$r = $mysqli->query("SELECT COUNT(*) AS c FROM responses");
-if ($r && ($row = $r->fetch_assoc())) $stats['responses'] = $row['c'];
-$r = $mysqli->query("SELECT COUNT(*) AS c FROM questions");
-if ($r && ($row = $r->fetch_assoc())) $stats['questions'] = $row['c'];
-$r = $mysqli->query("SELECT COUNT(*) AS c FROM unanswered");
-if ($r && ($row = $r->fetch_assoc())) $stats['unanswered'] = $row['c'];
-$r = $mysqli->query("SELECT COUNT(*) AS c FROM users");
-if ($r && ($row = $r->fetch_assoc())) $stats['users'] = $row['c'];
 
-// fetch unanswered list for table
+/* Fetch stats */
+$stats = array(
+    'responses' => 0,
+    'questions' => 0,
+    'unanswered' => 0,
+    'users' => 0
+);
+
+/* Count responses */
+$result = mysqli_query($mysqli, "SELECT COUNT(*) AS c FROM responses");
+if ($result) {
+    $row = mysqli_fetch_assoc($result);
+    $stats['responses'] = $row['c'];
+}
+
+/* Count questions */
+$result = mysqli_query($mysqli, "SELECT COUNT(*) AS c FROM questions");
+if ($result) {
+    $row = mysqli_fetch_assoc($result);
+    $stats['questions'] = $row['c'];
+}
+
+/* Count unanswered */
+$result = mysqli_query($mysqli, "SELECT COUNT(*) AS c FROM unanswered");
+if ($result) {
+    $row = mysqli_fetch_assoc($result);
+    $stats['unanswered'] = $row['c'];
+}
+
+/* Count users */
+$result = mysqli_query($mysqli, "SELECT COUNT(*) AS c FROM users");
+if ($result) {
+    $row = mysqli_fetch_assoc($result);
+    $stats['users'] = $row['c'];
+}
+
+/* Fetch unanswered list */
 $unanswered = array();
-$res = $mysqli->query("SELECT id, query, cnt, created_at FROM unanswered ORDER BY created_at DESC");
+
+$res = mysqli_query($mysqli,
+    "SELECT id, query, cnt, created_at 
+     FROM unanswered 
+     ORDER BY created_at DESC"
+);
+
 if ($res) {
-    while ($rw = $res->fetch_assoc()) $unanswered[] = $rw;
+    while ($rw = mysqli_fetch_assoc($res)) {
+        $unanswered[] = $rw;
+    }
 }
 ?>
 <!doctype html>

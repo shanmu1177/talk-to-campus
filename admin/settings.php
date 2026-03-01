@@ -1,37 +1,77 @@
 <?php
-// admin/settings.php - edit system_info table (intro, no-result, site title)
 session_start();
+
 include_once __DIR__ . '/../includes/config.php';
 include_once __DIR__ . '/../includes/db.php';
 include_once __DIR__ . '/../includes/auth.php';
 
 require_admin();
-if (!isset($_SESSION['admin_id'])) { header('Location: login.php'); exit; }
-if (file_exists(__DIR__ . '/../includes/db.php')) include_once __DIR__ . '/../includes/db.php'; else die("Missing includes/db.php");
 
 $msg = '';
-$res = $mysqli->query("SELECT * FROM system_info LIMIT 1");
-$row = $res ? $res->fetch_assoc() : null;
 
-$site_title = $row ? $row['site_title'] : 'Talk To Campus';
-$intro_msg = $row ? $row['intro_msg'] : "Hello! I'm Talk To Campus Bot. How can I assist you today?";
-$no_result = $row ? $row['no_result_msg'] : "I couldn't find an answer for that. We'll check with admin.";
+/* FETCH SYSTEM INFO */
+$site_title = 'Talk To Campus';
+$intro_msg  = "Hello! I'm Talk To Campus Bot. How can I assist you today?";
+$no_result  = "I couldn't find an answer for that. We'll check with admin.";
+$system_id  = 0;
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$result = mysqli_query($mysqli, "SELECT * FROM system_info LIMIT 1");
+
+if ($result && mysqli_num_rows($result) > 0) {
+
+    $row = mysqli_fetch_assoc($result);
+
+    $system_id = intval($row['id']);
+    $site_title = $row['site_title'];
+    $intro_msg  = $row['intro_msg'];
+    $no_result  = $row['no_result_msg'];
+}
+
+
+/* SAVE SETTINGS */
+if ($_SERVER['REQUEST_METHOD'] == 'POST') {
+
     $site_title = trim($_POST['site_title']);
-    $intro_msg = trim($_POST['intro_msg']);
-    $no_result = trim($_POST['no_result_msg']);
+    $intro_msg  = trim($_POST['intro_msg']);
+    $no_result  = trim($_POST['no_result_msg']);
 
-    if ($row) {
-        $stmt = $mysqli->prepare("UPDATE system_info SET site_title = ?, intro_msg = ?, no_result_msg = ? WHERE id = ? LIMIT 1");
-        $stmt->bind_param('sssi', $site_title, $intro_msg, $no_result, $row['id']);
-        $stmt->execute(); $stmt->close();
+    if ($system_id > 0) {
+
+        $stmt = mysqli_prepare($mysqli,
+            "UPDATE system_info
+             SET site_title = ?, intro_msg = ?, no_result_msg = ?
+             WHERE id = ? LIMIT 1"
+        );
+
+        mysqli_stmt_bind_param($stmt, "sssi",
+            $site_title,
+            $intro_msg,
+            $no_result,
+            $system_id
+        );
+
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
+
     } else {
-        $stmt = $mysqli->prepare("INSERT INTO system_info (site_title, intro_msg, no_result_msg) VALUES (?, ?, ?)");
-        $stmt->bind_param('sss', $site_title, $intro_msg, $no_result);
-        $stmt->execute(); $stmt->close();
+
+        $stmt = mysqli_prepare($mysqli,
+            "INSERT INTO system_info
+             (site_title, intro_msg, no_result_msg)
+             VALUES (?, ?, ?)"
+        );
+
+        mysqli_stmt_bind_param($stmt, "sss",
+            $site_title,
+            $intro_msg,
+            $no_result
+        );
+
+        mysqli_stmt_execute($stmt);
+        mysqli_stmt_close($stmt);
     }
-    $msg = "Saved.";
+
+    $msg = "Saved successfully.";
 }
 ?>
 <!doctype html>
