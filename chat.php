@@ -210,8 +210,10 @@ if (isset($mysqli)) {
     var userText = isQuick ? content : content.replace(/^\s+|\s+$/g, '');
     if (!userText) return;
 
+    var icon = '<img src="images/btn.jpeg" width="16" style="vertical-align:middle;margin-right:5px;">';
+
     var displayText = isQuick ? 
-        ('🔘 ' + content.replace(/_/g,' ')) : 
+        (icon + content.replace(/_/g,' ')) : 
         escapeHtml(userText);
 
     appendMessage(displayText, 'user');
