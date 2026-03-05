@@ -103,11 +103,34 @@ if ($res) {
   .page-head p { margin:0; color:var(--muted); }
 
   /* Stats row */
-  .stats-row { display:flex; gap:18px; margin-bottom:22px; flex-wrap:wrap; }
-  .stat-card { flex:1; min-width:180px; background:#fff; padding:18px; border-radius:12px; 
-    box-shadow:0 8px 20px rgba(10,10,30,0.04); text-align:left; }
-  .stat-card h4{margin:0;font-size:14px;color:var(--muted)}
-  .stat-card .num{font-size:28px;font-weight:700;margin-top:8px}
+.stats-row {
+  display: flex;
+  flex-wrap: wrap;        /* allow wrapping */
+  gap: 18px;
+  margin-bottom: 22px;
+}
+
+/* Each card take 50% minus gap */
+.stat-card {
+  width: calc(50% - 9px); /* 2 boxes per row */
+  background: #fff;
+  padding: 18px;
+  border-radius: 12px;
+  box-shadow: 0 8px 20px rgba(10,10,30,0.04);
+  text-align: left;
+}
+
+.stat-card h4 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--muted);
+}
+
+.stat-card .num {
+  font-size: 28px;
+  font-weight: 700;
+  margin-top: 8px;
+}
 
   /* Unanswered panel */
   .panel { background:#fff; padding:20px; border-radius:12px; box-shadow:0 8px 30px rgba(10,10,30,0.04) }
